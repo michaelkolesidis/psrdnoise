@@ -1,0 +1,211 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html>
+<head>
+    <title>3-D PSRDnoise tutorial 02</title>
+    <meta charset="utf-8">
+	<link type="text/css" rel="stylesheet" href="3d-psrdnoise-tutorial.css">
+
+<script type="text/javascript" src="syntaxhighlighter_3.0.83/scripts/shCore.js"></script>
+<script type="text/javascript" src="syntaxhighlighter_3.0.83/scripts/shBrushGLSL.js"></script>
+<link type="text/css" rel="stylesheet" href="syntaxhighlighter_3.0.83/styles/shCoreEclipse.css"/>
+
+</style>
+
+<script type="text/javascript">
+function showshader() {
+	codepane = document.getElementById("fragmentcode");
+	codepane.innerHTML = document.getElementById("fs-visible").textContent;
+	SyntaxHighlighter.highlight(codepane);
+}
+</script>
+
+</head>
+<body onload="showshader();">
+<h2>3-D PSRDnoise tutorial</h2>
+<h3>
+	<a class="navigation" href="3d-psrdnoise-tutorial-01.html">Page 1</a>
+	<a class="navigation" href="3d-psrdnoise-tutorial-02.html">2</a>
+	<a class="navigation" href="3d-psrdnoise-tutorial-03.html">3</a>
+	<a class="navigation" href="3d-psrdnoise-tutorial-04.html">4</a>
+	<a class="navigation" href="3d-psrdnoise-tutorial-05.html">5</a>
+	<a class="navigation" href="3d-psrdnoise-tutorial-06.html">6</a>
+	<a class="navigation" href="3d-psrdnoise-tutorial-07.html">7</a>
+</h3>
+    <div class="grid-container">
+		<div class="canvas" id="three-container">
+		</div>
+		<div class="code">
+		<h1>2: Closing the seam</h1>
+		<p>The stretching at the equator can be fixed by making the texture "twice as wide" (scale the first texture coordinate by 2.0), and the seam where the first 2-D texture coordinate jumps from 1.0 to 0.0 can be removed by making the 2-D noise periodic with a matching repeat period. The uneven scaling with latitude and the ugly pinches at the poles remain, though.</p>
+		<pre class="brush: GLSL;" id = "fragmentcode">
+		// Fragment shader code goes here
+		</pre>
+		</div>
+	</div>
+</body>
+
+<script type="x-shader/x-vertex" id="vs-visible">
+uniform float time;
+
+varying vec3 uvw;
+varying vec2 st;
+varying vec3 newnormal;
+
+void main()
+{
+	uvw = position;
+	st = uv;
+	newnormal = (modelViewMatrix * vec4(normal,0.0)).xyz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+}
+</script>
+
+<script type="x-shader/x-fragment" id="fs-visible">
+uniform float time;
+
+varying vec2 st;
+
+void main()
+{
+	vec2 v = st*vec2(24.0, 12.0);
+	vec2 p = vec2(24.0,24.0);
+	float alpha = 2.0*time;
+	vec2 g;
+
+	float n = 0.5 + 0.5*psrdnoise(v, p, alpha, g);
+	vec3 mixcolor = vec3(n);
+	
+    gl_FragColor = vec4(mixcolor, 1.0);
+}
+</script>
+
+<script type="x-shader" id="includes-vs-hidden">
+</script>
+
+<script type="x-shader" id="includes-fs-hidden">
+#ifdef GL_OES_standard_derivatives
+#extension GL_OES_standard_derivatives : enable
+#endif
+
+#ifdef GL_ES
+precision highp float;
+#endif
+
+// psrdnoise (c) Stefan Gustavson and Ian McEwan,
+// ver. 2021-12-02, published under the MIT license:
+// https://github.com/stegu/psrdnoise/
+
+float psrdnoise(vec2 x, vec2 period, float alpha, out vec2 gradient)
+{
+	vec2 uv = vec2(x.x+x.y*0.5, x.y);
+	vec2 i0 = floor(uv), f0 = fract(uv);
+	float cmp = step(f0.y, f0.x);
+	vec2 o1 = vec2(cmp, 1.0-cmp);
+	vec2 i1 = i0 + o1, i2 = i0 + 1.0;
+	vec2 v0 = vec2(i0.x - i0.y*0.5, i0.y);
+	vec2 v1 = vec2(v0.x + o1.x - o1.y*0.5, v0.y + o1.y);
+	vec2 v2 = vec2(v0.x + 0.5, v0.y + 1.0);
+	vec2 x0 = x - v0, x1 = x - v1, x2 = x - v2;
+	vec3 iu, iv, xw, yw;
+	if(any(greaterThan(period, vec2(0.0)))) {
+		xw = vec3(v0.x, v1.x, v2.x);
+		yw = vec3(v0.y, v1.y, v2.y);
+		if(period.x > 0.0)
+			xw = mod(vec3(v0.x, v1.x, v2.x), period.x);
+		if(period.y > 0.0)
+			yw = mod(vec3(v0.y, v1.y, v2.y), period.y);
+		iu = floor(xw + 0.5*yw + 0.5); iv = floor(yw + 0.5);
+	} else {
+		iu = vec3(i0.x, i1.x, i2.x); iv = vec3(i0.y, i1.y, i2.y);
+	}
+	vec3 hash = mod(iu, 289.0);
+	hash = mod((hash*51.0 + 2.0)*hash + iv, 289.0);
+	hash = mod((hash*34.0 + 10.0)*hash, 289.0);
+	vec3 psi = hash*0.07482 + alpha;
+	vec3 gx = cos(psi); vec3 gy = sin(psi);
+	vec2 g0 = vec2(gx.x, gy.x);
+	vec2 g1 = vec2(gx.y, gy.y);
+	vec2 g2 = vec2(gx.z, gy.z);
+	vec3 w = 0.8 - vec3(dot(x0, x0), dot(x1, x1), dot(x2, x2));
+	w = max(w, 0.0); vec3 w2 = w*w; vec3 w4 = w2*w2;
+	vec3 gdotx = vec3(dot(g0, x0), dot(g1, x1), dot(g2, x2));
+	float n = dot(w4, gdotx);
+	vec3 w3 = w2*w; vec3 dw = -8.0*w3*gdotx;
+	vec2 dn0 = w4.x*g0 + dw.x*x0;
+	vec2 dn1 = w4.y*g1 + dw.y*x1;
+	vec2 dn2 = w4.z*g2 + dw.z*x2;
+	gradient = 10.9*(dn0 + dn1 + dn2);
+	return 10.9*n;
+}
+
+</script>
+
+<script src="js/three.min.js"></script>
+<script src="js/OrbitControls.js"></script>
+	
+<script type="text/javascript" id="mainCode">
+var
+    container,
+    renderer,
+    scene,
+    camera,
+    mesh,
+    start = Date.now(),
+    fov = 45;
+
+window.addEventListener( 'load', function() {
+    container = document.getElementById( "three-container" );
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(
+        fov,
+        1.0,
+        0.1,
+        100 );
+    camera.position.z = 3.0;
+    material = new THREE.ShaderMaterial( {
+		uniforms: {
+			time: {
+				type: "f",
+				value: 0.0
+			}
+		},
+   vertexShader: document.getElementById('includes-vs-hidden').textContent
+      + "\r\n" + document.getElementById( 'vs-visible' ).textContent,
+    fragmentShader: document.getElementById('includes-fs-hidden').textContent
+	  + "\r\n" + document.getElementById( 'fs-visible' ).textContent
+	} );
+
+	mesh = new THREE.Mesh(new THREE.SphereGeometry( 1.0, 100, 100 ), material);
+	scene.add( mesh );
+
+	renderer = new THREE.WebGLRenderer();
+	renderer.setSize( 500, 500 );
+	renderer.setPixelRatio( window.devicePixelRatio );
+	renderer.getContext().getExtension("OES_standard_derivatives");
+
+	const orbit = new THREE.OrbitControls( camera, renderer.domElement );
+	container.appendChild( renderer.domElement );
+
+	onWindowResize();
+	window.addEventListener( 'resize', onWindowResize );
+
+	render();
+} );
+
+function onWindowResize () {
+	renderer.setSize( 500, 500 );
+	camera.aspect = 1.0;
+	camera.updateProjectionMatrix();
+}
+
+function render() {
+    material.uniforms[ 'time' ].value = .001 * ( Date.now() - start );
+    renderer.render( scene, camera );
+    requestAnimationFrame( render );
+}
+
+</script>
+
+</html>
